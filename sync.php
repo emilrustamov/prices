@@ -130,36 +130,83 @@ if (file_exists($calculateScript)) {
     echo "Ошибка: файл calculate_reports.php не найден\n";
 }
 
-echo "\nСинхронизация юнитов...\n";
+echo "\nСинхронизация районов и юнитов...\n";
+
+$districtInsertStmt = $pdo->prepare("
+    INSERT INTO districts (id, name) VALUES (?, ?)
+    ON DUPLICATE KEY UPDATE name = VALUES(name)
+");
+foreach (getDistrictCatalog() as $districtId => $districtName) {
+    $districtInsertStmt->execute([$districtId, $districtName]);
+}
+
 $unitsStmt = $pdo->query("
-    SELECT DISTINCT unit_id 
-    FROM contracts 
-    WHERE unit_id IS NOT NULL 
+    SELECT DISTINCT unit_id
+    FROM contracts
+    WHERE unit_id IS NOT NULL
     AND unit_id != ''
 ");
 $unitIds = $unitsStmt->fetchAll(PDO::FETCH_COLUMN);
 
-$unitsSynced = 0;
 $unitInsertStmt = $pdo->prepare("
     INSERT INTO units (bitrix_id, name, synced_at)
     VALUES (?, ?, CURRENT_TIMESTAMP)
     ON DUPLICATE KEY UPDATE
-        name = COALESCE(VALUES(name), name),
+        name = VALUES(name),
         synced_at = CURRENT_TIMESTAMP
 ");
+$unitDistrictDeleteStmt = $pdo->prepare("DELETE FROM unit_districts WHERE unit_id = ?");
+$unitDistrictInsertStmt = $pdo->prepare("
+    INSERT IGNORE INTO unit_districts (unit_id, district_id) VALUES (?, ?)
+");
 
-foreach ($unitIds as $unitId) {
-    $unitNameStmt = $pdo->prepare("
-        SELECT name 
-        FROM units 
-        WHERE bitrix_id = ?
-    ");
-    $unitNameStmt->execute([$unitId]);
-    $existingName = $unitNameStmt->fetchColumn();
-    
-    $unitName = $existingName ?: $unitId;
-    $unitInsertStmt->execute([$unitId, $unitName]);
-    $unitsSynced++;
+$unitsSynced = 0;
+$chunks = array_chunk($unitIds, 50);
+
+foreach ($chunks as $chunk) {
+    $result = CRest::call('crm.item.list', [
+        'entityTypeId' => UNIT_ENTITY_TYPE_ID,
+        'filter' => [
+            '@id' => array_map('intval', $chunk)
+        ],
+        'select' => [
+            'id',
+            'title',
+            UNIT_DISTRICT_FIELD
+        ],
+        'start' => 0
+    ]);
+
+    if (isset($result['error'])) {
+        echo "Ошибка API юнитов: " . ($result['error_information'] ?? $result['error']) . "\n";
+        break;
+    }
+
+    $items = $result['result']['items'] ?? [];
+    $itemsById = [];
+    foreach ($items as $item) {
+        $itemsById[(string)$item['id']] = $item;
+    }
+
+    foreach ($chunk as $unitId) {
+        $unitKey = (string)$unitId;
+        $item = $itemsById[$unitKey] ?? null;
+        $unitName = $item['title'] ?? $unitKey;
+        $unitInsertStmt->execute([$unitKey, $unitName]);
+
+        $unitDistrictDeleteStmt->execute([$unitKey]);
+        $districtValues = $item[UNIT_DISTRICT_FIELD] ?? [];
+        if (!is_array($districtValues)) {
+            $districtValues = $districtValues === null || $districtValues === '' ? [] : [$districtValues];
+        }
+        foreach ($districtValues as $districtId) {
+            $districtId = (int)$districtId;
+            if ($districtId > 0) {
+                $unitDistrictInsertStmt->execute([$unitKey, $districtId]);
+            }
+        }
+        $unitsSynced++;
+    }
 }
 
 echo "Синхронизировано юнитов: $unitsSynced\n";

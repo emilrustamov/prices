@@ -9,21 +9,6 @@ echo "=== Расчет месячных отчетов ===\n";
 $pdo->exec("TRUNCATE TABLE monthly_reports");
 echo "Таблица monthly_reports очищена\n";
 
-function getContractTypeName($typeId) {
-    $shortTermIds = [882, 1304, 6578, 1306];
-    $longTermIds = [884, 886, 8672];
-    if ($typeId === null) {
-        return null;
-    }
-    $typeIdInt = (int)$typeId;
-    if (in_array($typeIdInt, $shortTermIds)) {
-        return 'краткосрок';
-    } elseif (in_array($typeIdInt, $longTermIds)) {
-        return 'долгосрок';
-    }
-    return null;
-}
-
 $stmt = $pdo->query("
     SELECT 
         bitrix_id, unit_id, start_date, end_date, opportunity, contract_type_id, stage_id
