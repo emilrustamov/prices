@@ -26,20 +26,13 @@ CREATE TABLE IF NOT EXISTS units (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     bitrix_id VARCHAR(100) NOT NULL,
     name VARCHAR(500),
+    apartment_id VARCHAR(100) NULL,
+    district VARCHAR(255) NULL,
+    building VARCHAR(255) NULL,
     synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY unique_bitrix_id (bitrix_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS districts (
-    id INT UNSIGNED PRIMARY KEY,
-    name VARCHAR(255) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS unit_districts (
-    unit_id VARCHAR(100) NOT NULL,
-    district_id INT UNSIGNED NOT NULL,
-    PRIMARY KEY (unit_id, district_id),
-    KEY idx_district_id (district_id)
+    UNIQUE KEY unique_bitrix_id (bitrix_id),
+    KEY idx_district (district),
+    KEY idx_building (building)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS monthly_reports (

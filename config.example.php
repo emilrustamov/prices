@@ -9,7 +9,10 @@ define('C_REST_CLIENT_ID', 'your_bitrix_client_id');
 define('C_REST_CLIENT_SECRET', 'your_bitrix_client_secret');
 
 define('UNIT_ENTITY_TYPE_ID', 167);
-define('UNIT_DISTRICT_FIELD', 'ufCrm6_1682239464105');
+define('APARTMENT_ENTITY_TYPE_ID', 144);
+define('UNIT_APARTMENT_FIELD', 'ufCrm8_1684429208');
+define('APARTMENT_DISTRICT_FIELD', 'ufCrm6District');
+define('APARTMENT_BUILDING_FIELD', 'ufCrm6_1682232363193');
 
 function getDbConnection() {
     static $pdo = null;
@@ -52,84 +55,133 @@ function getContractTypeName($typeId) {
 }
 
 /**
- * @param string|null $value
+ * @param mixed $value
  * @return int[]
  */
 function parseCsvInts($value) {
     if ($value === null || $value === '') {
         return [];
     }
-    return array_values(array_filter(array_map('intval', explode(',', $value))));
+    if (is_array($value)) {
+        return array_values(array_filter(array_map('intval', $value)));
+    }
+    return array_values(array_filter(array_map('intval', explode(',', (string)$value))));
 }
 
 /**
- * @return array<int, string>
+ * @param mixed $value
+ * @return string[]
  */
-function getDistrictCatalog() {
-    return [
-        9222 => 'Al Barsha South',
-        9224 => 'Al Bastakiya',
-        9226 => 'Al Furjan',
-        9228 => 'Al Jadaf',
-        9230 => 'Al Karama',
-        9232 => 'Al Kifaf',
-        9234 => 'Al Merkad',
-        9236 => 'Al Rigga',
-        9238 => 'Bur Dubai',
-        9240 => 'Business Bay',
-        9242 => 'DAMAC Hills',
-        9244 => 'Downtown Dubai',
-        9246 => 'Dubai Hills',
-        9248 => 'Dubai Hills Estate',
-        9250 => 'Dubai International Financial Center DIFC',
-        9252 => 'Dubai Marina',
-        9254 => 'Dubai South',
-        9256 => 'Dubai Sports City',
-        9258 => 'Hadaeq Sheikh Mohammed Bin Rashid City District One',
-        9260 => 'International Media Production Zone',
-        9262 => 'Jebel Ali',
-        9264 => 'Jebel Ali 1',
-        9266 => 'Jebel Ali Village',
-        9268 => 'Jumeirah',
-        9270 => 'JLT',
-        9272 => 'Jumeirah 1',
-        9274 => 'Jumeirah Beach Residence JBR',
-        9276 => 'Jumeirah Lakes Towers',
-        9278 => 'Jumeirah Village',
-        9280 => 'Jumeirah Village Circle',
-        9282 => 'Jumeirah Village Circle District 10',
-        9284 => 'Jumeirah Village Circle District 11',
-        9286 => 'Jumeirah Village Circle District 12',
-        9288 => 'Jumeirah Village Circle District 13',
-        9290 => 'Jumeirah Village Triangle District 2',
-        9292 => 'Madinat Jumeirah Living',
-        9294 => 'Nadd Al Sheba 1',
-        9296 => 'Ras Al Khor',
-        9298 => 'The Greens',
-        9300 => 'The Palm Jumeirah',
-        9302 => 'Umm Suqeim 3',
-        9304 => 'Wadi Al Safa 5',
-        9306 => 'Zaabeel',
-        9308 => 'Zaabeel 1',
-        9310 => 'Zaabeel 2',
-    ];
+function parseCsvStrings($value) {
+    if ($value === null || $value === '') {
+        return [];
+    }
+    if (is_array($value)) {
+        return array_values(array_filter(array_map(static function ($item) {
+            return trim((string)$item);
+        }, $value), static function ($item) {
+            return $item !== '';
+        }));
+    }
+    return array_values(array_filter(array_map('trim', explode(',', (string)$value)), static function ($item) {
+        return $item !== '';
+    }));
 }
 
 /**
  * @param string $query
  * @param array $params
- * @param int[] $districts
+ * @param string $column
+ * @param string[] $values
  * @return void
  */
-function appendDistrictFilter(&$query, &$params, array $districts) {
-    if (empty($districts)) {
+function appendUnitStringFilter(&$query, &$params, $column, array $values) {
+    if (empty($values)) {
         return;
     }
-    $placeholders = implode(',', array_fill(0, count($districts), '?'));
-    $query .= " AND EXISTS (
-        SELECT 1 FROM unit_districts ud
-        WHERE ud.unit_id = u.bitrix_id AND ud.district_id IN ($placeholders)
-    )";
-    $params = array_merge($params, $districts);
+    $placeholders = implode(',', array_fill(0, count($values), '?'));
+    $query .= " AND u.$column IN ($placeholders)";
+    $params = array_merge($params, $values);
+}
+
+/**
+ * @param mixed $value
+ * @return string|null
+ */
+function normalizeBitrixString($value) {
+    if (is_array($value)) {
+        $value = reset($value);
+    }
+    if ($value === null || $value === false) {
+        return null;
+    }
+    $value = trim((string)$value);
+    return $value === '' ? null : $value;
+}
+
+/**
+ * @param mixed $value
+ * @return string|null
+ */
+function normalizeBitrixId($value) {
+    if (is_array($value)) {
+        $value = reset($value);
+    }
+    if ($value === null || $value === false || $value === '') {
+        return null;
+    }
+    if (is_string($value) && preg_match('/(\d+)$/', $value, $matches)) {
+        return $matches[1];
+    }
+    $id = (int)$value;
+    return $id > 0 ? (string)$id : null;
+}
+
+/**
+ * @return array
+ */
+function getRequestInput() {
+    static $input = null;
+    if ($input !== null) {
+        return $input;
+    }
+    $input = $_GET;
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+        $raw = file_get_contents('php://input');
+        if ($raw !== false && $raw !== '') {
+            $json = json_decode($raw, true);
+            if (is_array($json)) {
+                $input = array_merge($input, $json);
+            }
+        }
+        if (!empty($_POST)) {
+            $input = array_merge($input, $_POST);
+        }
+    }
+    return $input;
+}
+
+/**
+ * @param int[] $years
+ * @param int[] $months
+ * @return array{0: DateTime, 1: DateTime}
+ */
+function getReportDateRange(array $years, array $months) {
+    $monthNums = !empty($months) ? $months : range(1, 12);
+    $rangeStart = null;
+    $rangeEnd = null;
+    foreach ($years as $year) {
+        foreach ($monthNums as $monthNum) {
+            $start = new DateTime(sprintf('%04d-%02d-01 00:00:00', $year, $monthNum));
+            $end = (clone $start)->modify('last day of this month')->setTime(23, 59, 59);
+            if ($rangeStart === null || $start < $rangeStart) {
+                $rangeStart = $start;
+            }
+            if ($rangeEnd === null || $end > $rangeEnd) {
+                $rangeEnd = $end;
+            }
+        }
+    }
+    return [$rangeStart, $rangeEnd];
 }
 

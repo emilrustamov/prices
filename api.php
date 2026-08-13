@@ -14,8 +14,23 @@ try {
 			break;
 
 		case 'districts':
-			$stmt = $pdo->query("SELECT id, name FROM districts ORDER BY name");
-			echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
+			$stmt = $pdo->query("
+				SELECT DISTINCT district AS name
+				FROM units
+				WHERE district IS NOT NULL AND district != ''
+				ORDER BY district
+			");
+			echo json_encode(['success' => true, 'data' => $stmt->fetchAll(PDO::FETCH_COLUMN)]);
+			break;
+
+		case 'buildings':
+			$stmt = $pdo->query("
+				SELECT DISTINCT building AS name
+				FROM units
+				WHERE building IS NOT NULL AND building != ''
+				ORDER BY building
+			");
+			echo json_encode(['success' => true, 'data' => $stmt->fetchAll(PDO::FETCH_COLUMN)]);
 			break;
 
 		case 'units':
@@ -24,7 +39,8 @@ try {
 				throw new InvalidArgumentException('Параметр years обязателен');
 			}
 			$months = parseCsvInts($_GET['months'] ?? null);
-			$districts = parseCsvInts($_GET['districts'] ?? null);
+			$districts = parseCsvStrings($_GET['districts'] ?? null);
+			$buildings = parseCsvStrings($_GET['buildings'] ?? null);
 
 			$yearPlaceholders = implode(',', array_fill(0, count($years), '?'));
 			$query = "
@@ -40,7 +56,8 @@ try {
 				$params = array_merge($params, $months);
 			}
 
-			appendDistrictFilter($query, $params, $districts);
+			appendUnitStringFilter($query, $params, 'district', $districts);
+			appendUnitStringFilter($query, $params, 'building', $buildings);
 
 			$query .= " GROUP BY u.bitrix_id, u.name HAVING reports_count > 0 ORDER BY u.bitrix_id";
 
@@ -65,15 +82,21 @@ try {
 			break;
 
 		case 'report':
-			$years = parseCsvInts($_GET['years'] ?? null);
+			$input = getRequestInput();
+			$years = parseCsvInts($input['years'] ?? null);
 			if (empty($years)) {
 				throw new InvalidArgumentException('Параметр years обязателен');
 			}
-			$months = parseCsvInts($_GET['months'] ?? null);
-			$districts = parseCsvInts($_GET['districts'] ?? null);
-			$contractType = !empty($_GET['contract_type']) ? $_GET['contract_type'] : null;
-			$contractTypeIds = parseCsvInts($_GET['contract_type_ids'] ?? null);
-			$units = array_values(array_filter(explode(',', $_GET['units'] ?? '')));
+			$months = parseCsvInts($input['months'] ?? null);
+			$districts = parseCsvStrings($input['districts'] ?? null);
+			$buildings = parseCsvStrings($input['buildings'] ?? null);
+			$contractType = !empty($input['contract_type']) ? $input['contract_type'] : null;
+			$contractTypeIds = parseCsvInts($input['contract_type_ids'] ?? null);
+			if (isset($input['units']) && is_array($input['units'])) {
+				$units = array_values(array_filter(array_map('strval', $input['units'])));
+			} else {
+				$units = array_values(array_filter(explode(',', (string)($input['units'] ?? ''))));
+			}
 
 			$yearPlaceholders = implode(',', array_fill(0, count($years), '?'));
 			$unitsQuery = "
@@ -90,7 +113,8 @@ try {
 				$unitsParams = array_merge($unitsParams, $months);
 			}
 
-			appendDistrictFilter($unitsQuery, $unitsParams, $districts);
+			appendUnitStringFilter($unitsQuery, $unitsParams, 'district', $districts);
+			appendUnitStringFilter($unitsQuery, $unitsParams, 'building', $buildings);
 
 			if ($contractType !== null) {
 				$unitsQuery .= " AND mr.contract_type = ?";
@@ -109,131 +133,158 @@ try {
 			$stmt->execute($unitsParams);
 			$unitsList = $stmt->fetchAll();
 
+			if (empty($unitsList)) {
+				echo json_encode([
+					'success' => true,
+					'data' => [
+						'units' => [],
+						'reports' => new stdClass()
+					]
+				]);
+				break;
+			}
+
+			$unitIds = array_column($unitsList, 'bitrix_id');
+			$unitPlaceholders = implode(',', array_fill(0, count($unitIds), '?'));
+
 			$monthDataQuery = "
-				SELECT contract_type, month_key, month_num, year, occupied_days, total_revenue, avg_price_per_day
+				SELECT unit_id, contract_type, month_key, month_num, year, occupied_days, total_revenue, avg_price_per_day
 				FROM monthly_reports
-				WHERE unit_id = ? AND year IN ($yearPlaceholders)
+				WHERE unit_id IN ($unitPlaceholders) AND year IN ($yearPlaceholders)
 			";
+			$monthParams = array_merge($unitIds, $years);
 
 			if (!empty($months)) {
 				$monthPlaceholders = implode(',', array_fill(0, count($months), '?'));
 				$monthDataQuery .= " AND month_num IN ($monthPlaceholders)";
+				$monthParams = array_merge($monthParams, $months);
 			}
 
 			if ($contractType !== null) {
 				$monthDataQuery .= " AND contract_type = ?";
+				$monthParams[] = $contractType;
 			}
 
-			$monthDataQuery .= " ORDER BY year, month_num, contract_type";
+			$monthDataQuery .= " ORDER BY unit_id, year, month_num, contract_type";
 			$monthStmt = $pdo->prepare($monthDataQuery);
+			$monthStmt->execute($monthParams);
+			$monthRows = $monthStmt->fetchAll(PDO::FETCH_ASSOC);
 
+			[$rangeStart, $rangeEnd] = getReportDateRange($years, $months);
 			$contractsQuery = "
-				SELECT bitrix_id, title, start_date, end_date, contract_type_id
+				SELECT unit_id, bitrix_id, title, start_date, end_date, contract_type_id
 				FROM contracts
-				WHERE unit_id = ?
+				WHERE unit_id IN ($unitPlaceholders)
 				AND is_valid = 1
 				AND start_date IS NOT NULL
 				AND end_date IS NOT NULL
 				AND opportunity > 0
-				AND (start_date <= ? AND end_date >= ?)
+				AND start_date <= ?
+				AND end_date >= ?
 			";
 			$contractsStmt = $pdo->prepare($contractsQuery);
+			$contractsStmt->execute(array_merge(
+				$unitIds,
+				[$rangeEnd->format('Y-m-d H:i:s'), $rangeStart->format('Y-m-d H:i:s')]
+			));
 
+			$contractsByUnit = [];
+			foreach ($contractsStmt->fetchAll(PDO::FETCH_ASSOC) as $contract) {
+				$contractsByUnit[$contract['unit_id']][] = $contract;
+			}
+
+			$monthBounds = [];
 			$reportData = [];
-			foreach ($unitsList as $unit) {
-				$params = array_merge([$unit['bitrix_id']], $years);
-				if (!empty($months)) {
-					$params = array_merge($params, $months);
+			foreach ($monthRows as $m) {
+				$unitId = $m['unit_id'];
+				$mContractType = $m['contract_type'];
+				$monthKey = $m['month_key'];
+
+				if (!isset($monthBounds[$monthKey])) {
+					$monthStart = new DateTime($monthKey . '-01');
+					$monthEnd = (clone $monthStart)->modify('last day of this month')->setTime(23, 59, 59);
+					$monthBounds[$monthKey] = [$monthStart, $monthEnd];
 				}
-				if ($contractType !== null) {
-					$params[] = $contractType;
-				}
-				$monthStmt->execute($params);
-				$monthRows = $monthStmt->fetchAll(PDO::FETCH_ASSOC);
+				[$monthStart, $monthEnd] = $monthBounds[$monthKey];
 
-				foreach ($monthRows as $m) {
-					$mContractType = $m['contract_type'];
-					$monthStart = new DateTime($m['month_key'] . '-01');
-					$monthEnd = clone $monthStart;
-					$monthEnd->modify('last day of this month');
+				$relevantContracts = [];
+				$earliestStart = null;
+				$latestEnd = null;
 
-					$contractsStmt->execute([
-						$unit['bitrix_id'],
-						$monthEnd->format('Y-m-d H:i:s'),
-						$monthStart->format('Y-m-d H:i:s')
-					]);
-					$allContracts = $contractsStmt->fetchAll();
-
-					$relevantContracts = [];
-					$earliestStart = null;
-					$latestEnd = null;
-
-					foreach ($allContracts as $contract) {
-						$contractTypeName = getContractTypeName($contract['contract_type_id']);
-						if ($contractTypeName !== $mContractType) {
-							continue;
-						}
-						if (!empty($contractTypeIds) && !in_array((int)$contract['contract_type_id'], $contractTypeIds, true)) {
-							continue;
-						}
-
-						$contractStart = new DateTime($contract['start_date']);
-						$contractEnd = new DateTime($contract['end_date']);
-						$contractTotalDays = $contractStart->diff($contractEnd)->days + 1;
-
-						if ($mContractType === 'долгосрок' && $contractTotalDays >= 30 && $contractTotalDays < 60) {
-							if ($contractStart->format('Y-m') !== $m['month_key']) {
-								continue;
-							}
-						}
-
-						$periodStart = $contractStart > $monthStart ? $contractStart : $monthStart;
-						$periodEnd = $contractEnd < $monthEnd ? $contractEnd : $monthEnd;
-						if ($periodStart > $periodEnd) {
-							continue;
-						}
-
-						if ($mContractType === 'долгосрок') {
-							if ($earliestStart === null || $contractStart < $earliestStart) {
-								$earliestStart = clone $contractStart;
-							}
-							if ($latestEnd === null || $contractEnd > $latestEnd) {
-								$latestEnd = clone $contractEnd;
-							}
-						}
-
-						$relevantContracts[] = [
-							'id' => $contract['bitrix_id'],
-							'title' => $contract['title'],
-							'total_days' => $contractTotalDays,
-							'contract_type_id' => $contract['contract_type_id']
-						];
+				foreach ($contractsByUnit[$unitId] ?? [] as $contract) {
+					$contractTypeName = getContractTypeName($contract['contract_type_id']);
+					if ($contractTypeName !== $mContractType) {
+						continue;
 					}
-
-					if (!empty($contractTypeIds) && empty($relevantContracts)) {
+					if (!empty($contractTypeIds) && !in_array((int)$contract['contract_type_id'], $contractTypeIds, true)) {
 						continue;
 					}
 
-					$m['contracts'] = $relevantContracts;
-					$m['contracts_count'] = count($relevantContracts);
-
-					if ($mContractType === 'долгосрок' && $earliestStart !== null && $latestEnd !== null) {
-						$m['total_contract_days'] = $earliestStart->diff($latestEnd)->days + 1;
-						$m['contract_start_date'] = $earliestStart->format('Y-m-d');
-						$m['contract_end_date'] = $latestEnd->format('Y-m-d');
+					$contractStart = new DateTime($contract['start_date']);
+					$contractEnd = new DateTime($contract['end_date']);
+					if ($contractStart > $monthEnd || $contractEnd < $monthStart) {
+						continue;
 					}
 
-					$reportData[$unit['bitrix_id']][$mContractType][$m['month_key']] = $m;
+					$contractTotalDays = $contractStart->diff($contractEnd)->days + 1;
+
+					if ($mContractType === 'долгосрок' && $contractTotalDays >= 30 && $contractTotalDays < 60) {
+						if ($contractStart->format('Y-m') !== $monthKey) {
+							continue;
+						}
+					}
+
+					$periodStart = $contractStart > $monthStart ? $contractStart : $monthStart;
+					$periodEnd = $contractEnd < $monthEnd ? $contractEnd : $monthEnd;
+					if ($periodStart > $periodEnd) {
+						continue;
+					}
+
+					if ($mContractType === 'долгосрок') {
+						if ($earliestStart === null || $contractStart < $earliestStart) {
+							$earliestStart = clone $contractStart;
+						}
+						if ($latestEnd === null || $contractEnd > $latestEnd) {
+							$latestEnd = clone $contractEnd;
+						}
+					}
+
+					$relevantContracts[] = [
+						'id' => $contract['bitrix_id'],
+						'title' => $contract['title']
+					];
 				}
+
+				if (!empty($contractTypeIds) && empty($relevantContracts)) {
+					continue;
+				}
+
+				unset($m['unit_id']);
+				$m['contracts'] = $relevantContracts;
+				$m['contracts_count'] = count($relevantContracts);
+
+				if ($mContractType === 'долгосрок' && $earliestStart !== null && $latestEnd !== null) {
+					$m['total_contract_days'] = $earliestStart->diff($latestEnd)->days + 1;
+					$m['contract_start_date'] = $earliestStart->format('Y-m-d');
+					$m['contract_end_date'] = $latestEnd->format('Y-m-d');
+				}
+
+				$reportData[$unitId][$mContractType][$monthKey] = $m;
+			}
+
+			if (!empty($contractTypeIds)) {
+				$unitsList = array_values(array_filter($unitsList, static function ($unit) use ($reportData) {
+					return isset($reportData[$unit['bitrix_id']]);
+				}));
 			}
 
 			echo json_encode([
 				'success' => true,
 				'data' => [
 					'units' => $unitsList,
-					'reports' => $reportData
+					'reports' => empty($reportData) ? new stdClass() : $reportData
 				]
-			]);
+			], JSON_UNESCAPED_UNICODE);
 			break;
 
 		default:

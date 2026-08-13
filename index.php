@@ -45,7 +45,7 @@
 		</div>
 
 		<div v-if="showFiltersModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" @click.self="showFiltersModal = false">
-			<div class="relative top-4 mx-auto border w-[96%] md:w-[92%] lg:w-5/6 xl:w-4/5 max-w-6xl shadow-lg rounded-md bg-white h-[92vh] max-h-[92vh] flex flex-col">
+			<div class="relative top-10 mx-auto border w-11/12 md:w-4/5 lg:w-3/4 xl:w-2/3 shadow-lg rounded-md bg-white max-h-[90vh] flex flex-col">
 				<div class="flex justify-between items-center p-4 border-b border-gray-200 flex-shrink-0">
 					<h3 class="text-lg font-bold text-gray-900">Фильтры отчета</h3>
 					<button @click="showFiltersModal = false" class="text-gray-400 hover:text-gray-600">
@@ -110,7 +110,6 @@
 										type="checkbox"
 										:value="month.num"
 										v-model="selectedMonths"
-										@change="loadUnits"
 										class="rounded border-gray-300 text-blue-600 mr-2"
 									>
 									<span class="text-xs text-gray-900">{{ month.name }}</span>
@@ -166,8 +165,26 @@
 						>
 							<div class="flex-1">
 								<span v-if="selectedDistricts.length === 0" class="text-gray-500 text-xs">Выберите районы...</span>
-								<span v-else-if="selectedDistrictDetails.length === 1" class="text-gray-700 text-xs">{{ selectedDistrictDetails[0].name }}</span>
+								<span v-else-if="selectedDistricts.length === 1" class="text-gray-700 text-xs">{{ selectedDistricts[0] }}</span>
 								<span v-else class="text-gray-700 text-xs">Выбрано: {{ selectedDistricts.length }}</span>
+							</div>
+							<svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+							</svg>
+						</button>
+					</div>
+
+					<div class="mb-0">
+						<label class="block text-xs font-medium text-gray-700 mb-1">Building (пусто = все):</label>
+						<button
+							type="button"
+							@click="openFilterDropdown = null; showBuildingsModal = true; buildingsSearch = ''"
+							class="w-full border border-gray-300 rounded-md px-2 py-1 bg-white cursor-pointer hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between text-left"
+						>
+							<div class="flex-1">
+								<span v-if="selectedBuildings.length === 0" class="text-gray-500 text-xs">Выберите здания...</span>
+								<span v-else-if="selectedBuildings.length === 1" class="text-gray-700 text-xs">{{ selectedBuildings[0] }}</span>
+								<span v-else class="text-gray-700 text-xs">Выбрано: {{ selectedBuildings.length }}</span>
 							</div>
 							<svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
@@ -179,7 +196,7 @@
 						<label class="block text-xs font-medium text-gray-700 mb-1">Юниты:</label>
 						<button
 							type="button"
-							@click="openFilterDropdown = null; showUnitsModal = true; unitsSearch = ''"
+							@click="openUnitsModal"
 							class="w-full border border-gray-300 rounded-md px-2 py-1 bg-white cursor-pointer hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between text-left"
 						>
 							<div class="flex-1">
@@ -229,16 +246,16 @@
 				<div class="overflow-y-auto flex-1 min-h-0 p-2">
 					<label
 						v-for="district in filteredDistricts"
-						:key="district.id"
+						:key="district"
 						class="flex items-center px-2 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100"
 					>
 						<input
 							type="checkbox"
-							:value="district.id"
+							:value="district"
 							v-model="selectedDistricts"
 							class="rounded border-gray-300 text-blue-600 mr-2"
 						>
-						<span class="text-xs font-medium text-gray-900">{{ district.name }}</span>
+						<span class="text-xs font-medium text-gray-900">{{ district }}</span>
 					</label>
 					<div v-if="filteredDistricts.length === 0" class="px-2 py-4 text-xs text-gray-500 text-center">
 						Районы не найдены
@@ -247,6 +264,55 @@
 
 				<div class="border-t border-gray-200 p-4 bg-gray-50 flex gap-2 justify-end flex-shrink-0 rounded-b-md">
 					<button @click="closeDistrictsModal" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-4 rounded transition-colors text-xs">Готово</button>
+				</div>
+			</div>
+		</div>
+
+		<div v-if="showBuildingsModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-[60]" @click.self="closeBuildingsModal">
+			<div class="relative top-10 mx-auto border w-11/12 md:w-3/5 lg:w-1/2 shadow-lg rounded-md bg-white h-[80vh] max-h-[90vh] flex flex-col" @click.stop>
+				<div class="flex justify-between items-center p-4 border-b border-gray-200 flex-shrink-0">
+					<h3 class="text-lg font-bold text-gray-900">Выбор Building</h3>
+					<button @click="closeBuildingsModal" class="text-gray-400 hover:text-gray-600">
+						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+						</svg>
+					</button>
+				</div>
+
+				<div class="p-4 border-b border-gray-200 flex-shrink-0">
+					<input
+						v-model="buildingsSearch"
+						placeholder="Поиск по зданиям..."
+						class="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+					>
+					<div class="mt-2 flex items-center">
+						<input type="checkbox" @change="toggleAllBuildings" :checked="allBuildingsSelected" class="rounded border-gray-300 text-blue-600" id="select-all-buildings">
+						<label for="select-all-buildings" class="ml-2 text-xs font-medium text-gray-700 cursor-pointer">Выбрать все</label>
+						<span class="ml-auto text-xs text-gray-500">Выбрано: {{ selectedBuildings.length }}</span>
+					</div>
+				</div>
+
+				<div class="overflow-y-auto flex-1 min-h-0 p-2">
+					<label
+						v-for="building in filteredBuildings"
+						:key="building"
+						class="flex items-center px-2 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100"
+					>
+						<input
+							type="checkbox"
+							:value="building"
+							v-model="selectedBuildings"
+							class="rounded border-gray-300 text-blue-600 mr-2"
+						>
+						<span class="text-xs font-medium text-gray-900">{{ building }}</span>
+					</label>
+					<div v-if="filteredBuildings.length === 0" class="px-2 py-4 text-xs text-gray-500 text-center">
+						Здания не найдены
+					</div>
+				</div>
+
+				<div class="border-t border-gray-200 p-4 bg-gray-50 flex gap-2 justify-end flex-shrink-0 rounded-b-md">
+					<button @click="closeBuildingsModal" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-4 rounded transition-colors text-xs">Готово</button>
 				</div>
 			</div>
 		</div>
@@ -404,23 +470,28 @@
 					showFiltersModal: false,
 					showUnitsModal: false,
 					showDistrictsModal: false,
+					showBuildingsModal: false,
 					showContractsModal: false,
 					showAvgPriceColumn: false,
 					openFilterDropdown: null,
 					years: [],
 					districts: [],
+					buildings: [],
 					selectedYears: [CURRENT_YEAR],
 					selectedMonths: [],
 					selectedDistricts: [],
+					selectedBuildings: [],
 					appliedYears: [CURRENT_YEAR],
 					appliedMonths: [],
 					appliedDistricts: [],
+					appliedBuildings: [],
 					selectedContractType: '',
 					selectedContractTypeIds: [],
 					selectedUnits: [],
 					availableUnits: [],
 					unitsSearch: '',
 					districtsSearch: '',
+					buildingsSearch: '',
 					units: [],
 					reports: {},
 					contractsModalData: [],
@@ -519,6 +590,7 @@
 					if (!(this.appliedYears.length === 1 && Number(this.appliedYears[0]) === CURRENT_YEAR)) count++;
 					if (this.appliedMonths.length > 0) count++;
 					if (this.appliedDistricts.length > 0) count++;
+					if (this.appliedBuildings.length > 0) count++;
 					if (this.selectedContractType) count++;
 					if (this.selectedContractTypeIds.length > 0) count++;
 					if (this.selectedUnits.length > 0 && this.selectedUnits.length !== this.availableUnits.length) count++;
@@ -536,36 +608,39 @@
 					if (!search) {
 						return this.districts;
 					}
-					return this.districts.filter(d => d.name.toLowerCase().includes(search));
+					return this.districts.filter(d => d.toLowerCase().includes(search));
 				},
 				allDistrictsSelected() {
 					return this.filteredDistricts.length > 0 &&
-						this.filteredDistricts.every(d => this.selectedDistricts.includes(d.id));
+						this.filteredDistricts.every(d => this.selectedDistricts.includes(d));
 				},
-				selectedDistrictDetails() {
-					const map = new Map(this.districts.map(d => [d.id, d]));
-					return this.selectedDistricts.map(id => map.get(id)).filter(Boolean);
+				filteredBuildings() {
+					const search = this.buildingsSearch.trim().toLowerCase();
+					if (!search) {
+						return this.buildings;
+					}
+					return this.buildings.filter(b => b.toLowerCase().includes(search));
+				},
+				allBuildingsSelected() {
+					return this.filteredBuildings.length > 0 &&
+						this.filteredBuildings.every(b => this.selectedBuildings.includes(b));
 				}
 			},
 			async mounted() {
-				document.addEventListener('click', this.closeFilterDropdowns);
+				this.loading = true;
 				try {
-					await Promise.all([this.loadYears(), this.loadDistricts()]);
-					await this.loadUnits();
-					await this.loadReport();
+					await Promise.all([this.loadYears(), this.loadDistricts(), this.loadBuildings()]);
+					await this.loadUnits(true);
+					await this.loadReport(true);
 				} catch (e) {
 					this.error = e.message;
+				} finally {
+					this.loading = false;
 				}
-			},
-			beforeUnmount() {
-				document.removeEventListener('click', this.closeFilterDropdowns);
 			},
 			methods: {
 				toggleFilterDropdown(name) {
 					this.openFilterDropdown = this.openFilterDropdown === name ? null : name;
-				},
-				closeFilterDropdowns() {
-					this.openFilterDropdown = null;
 				},
 				contractUrl(id) {
 					return `${CONTRACT_URL}${id}/`;
@@ -586,12 +661,16 @@
 					if (!result.success) {
 						throw new Error(result.error);
 					}
-					this.districts = result.data.map(d => ({
-						id: Number(d.id),
-						name: d.name
-					}));
+					this.districts = result.data;
 				},
-				buildFilterParams(action, years, months, districts) {
+				async loadBuildings() {
+					const result = await this.fetchJson(new URLSearchParams({ action: 'buildings' }));
+					if (!result.success) {
+						throw new Error(result.error);
+					}
+					this.buildings = result.data;
+				},
+				buildFilterParams(action, years, months, districts, buildings) {
 					const params = new URLSearchParams({
 						action,
 						years: years.join(',')
@@ -602,6 +681,9 @@
 					if (districts.length > 0) {
 						params.append('districts', districts.join(','));
 					}
+					if (buildings.length > 0) {
+						params.append('buildings', buildings.join(','));
+					}
 					return params;
 				},
 				onYearsChange() {
@@ -609,16 +691,28 @@
 					if (this.selectedYears.length === 0) {
 						this.selectedYears = [CURRENT_YEAR];
 					}
-					this.loadUnits();
 				},
-				async loadUnits() {
-					this.loading = true;
+				async openUnitsModal() {
+					this.openFilterDropdown = null;
+					this.unitsSearch = '';
+					this.showUnitsModal = true;
+					await this.loadUnits(true);
+				},
+				async loadUnits(silent = false) {
+					if (!silent) {
+						this.loading = true;
+					}
 					this.error = null;
 					try {
 						const years = this.selectedYears.map(Number);
 						const months = this.selectedMonths.map(Number);
-						const districts = this.selectedDistricts.map(Number);
-						const result = await this.fetchJson(this.buildFilterParams('units', years, months, districts));
+						const result = await this.fetchJson(this.buildFilterParams(
+							'units',
+							years,
+							months,
+							this.selectedDistricts,
+							this.selectedBuildings
+						));
 						if (!result.success) {
 							throw new Error(result.error);
 						}
@@ -635,36 +729,59 @@
 					} catch (e) {
 						this.error = e.message;
 					} finally {
-						this.loading = false;
+						if (!silent) {
+							this.loading = false;
+						}
 					}
 				},
-				async loadReport() {
-					this.loading = true;
+				async loadReport(silent = false) {
+					if (!silent) {
+						this.loading = true;
+					}
 					this.error = null;
+					const startedAt = performance.now();
+					console.log('[report] start', new Date().toISOString());
 					try {
-						const years = this.appliedYears.map(Number);
-						const months = this.appliedMonths.map(Number);
-						const districts = this.appliedDistricts.map(Number);
-						const params = this.buildFilterParams('report', years, months, districts);
-						params.append('units', this.selectedUnits.join(','));
+						const allSelected = this.selectedUnits.length > 0
+							&& this.selectedUnits.length === this.availableUnits.length;
+						const body = {
+							years: this.appliedYears.map(Number),
+							months: this.appliedMonths.map(Number),
+							districts: this.appliedDistricts,
+							buildings: this.appliedBuildings
+						};
+						if (!allSelected) {
+							body.units = this.selectedUnits;
+						}
 						if (this.selectedContractType) {
-							params.append('contract_type', this.selectedContractType);
+							body.contract_type = this.selectedContractType;
 						}
 						if (this.selectedContractTypeIds.length > 0) {
-							params.append('contract_type_ids', this.selectedContractTypeIds.join(','));
+							body.contract_type_ids = this.selectedContractTypeIds;
 						}
-						const result = await this.fetchJson(params);
+						const response = await fetch('api.php?action=report', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify(body)
+						});
+						const result = await response.json();
 						if (!result.success) {
 							throw new Error(result.error);
 						}
 						this.units = result.data.units;
 						this.reports = result.data.reports;
+						const elapsedMs = Math.round(performance.now() - startedAt);
+						console.log('[report] done', new Date().toISOString(), `${elapsedMs} ms`, `units=${this.units.length}`);
 					} catch (e) {
+						const elapsedMs = Math.round(performance.now() - startedAt);
+						console.log('[report] error', new Date().toISOString(), `${elapsedMs} ms`, e.message);
 						this.error = e.message;
 						this.units = [];
 						this.reports = {};
 					} finally {
-						this.loading = false;
+						if (!silent) {
+							this.loading = false;
+						}
 					}
 				},
 				toggleAllUnits(event) {
@@ -676,17 +793,26 @@
 					}
 				},
 				toggleAllDistricts(event) {
-					const filteredIds = this.filteredDistricts.map(d => d.id);
 					if (event.target.checked) {
-						this.selectedDistricts = [...new Set([...this.selectedDistricts, ...filteredIds])];
+						this.selectedDistricts = [...new Set([...this.selectedDistricts, ...this.filteredDistricts])];
 					} else {
-						this.selectedDistricts = this.selectedDistricts.filter(id => !filteredIds.includes(id));
+						this.selectedDistricts = this.selectedDistricts.filter(d => !this.filteredDistricts.includes(d));
+					}
+				},
+				toggleAllBuildings(event) {
+					if (event.target.checked) {
+						this.selectedBuildings = [...new Set([...this.selectedBuildings, ...this.filteredBuildings])];
+					} else {
+						this.selectedBuildings = this.selectedBuildings.filter(b => !this.filteredBuildings.includes(b));
 					}
 				},
 				closeDistrictsModal() {
 					this.showDistrictsModal = false;
 					this.districtsSearch = '';
-					this.loadUnits();
+				},
+				closeBuildingsModal() {
+					this.showBuildingsModal = false;
+					this.buildingsSearch = '';
 				},
 				getShortUnitName(fullName) {
 					return fullName.split('/')[0].trim();
@@ -695,35 +821,37 @@
 					return this.allContractTypes.find(t => t.id === typeId).name;
 				},
 				async resetFilters() {
-					this.openFilterDropdown = null;
 					this.selectedYears = [CURRENT_YEAR];
 					this.selectedMonths = [];
 					this.selectedDistricts = [];
+					this.selectedBuildings = [];
 					this.appliedYears = [CURRENT_YEAR];
 					this.appliedMonths = [];
 					this.appliedDistricts = [];
+					this.appliedBuildings = [];
 					this.selectedContractType = '';
 					this.selectedContractTypeIds = [];
 					this.selectedUnits = [];
 					this.showUnitsModal = false;
 					this.showDistrictsModal = false;
+					this.showBuildingsModal = false;
 					this.showFiltersModal = false;
 					await this.loadUnits();
 					await this.loadReport();
 				},
 				async applyFilters() {
-					this.openFilterDropdown = null;
 					this.selectedYears = this.selectedYears.map(Number);
 					this.selectedMonths = this.selectedMonths.map(Number);
-					this.selectedDistricts = this.selectedDistricts.map(Number);
 					if (this.selectedYears.length === 0) {
 						this.selectedYears = [CURRENT_YEAR];
 					}
 					this.appliedYears = [...this.selectedYears];
 					this.appliedMonths = [...this.selectedMonths];
 					this.appliedDistricts = [...this.selectedDistricts];
+					this.appliedBuildings = [...this.selectedBuildings];
 					this.showUnitsModal = false;
 					this.showDistrictsModal = false;
+					this.showBuildingsModal = false;
 					this.showFiltersModal = false;
 					await this.loadUnits();
 					await this.loadReport();
