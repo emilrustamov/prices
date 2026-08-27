@@ -1034,7 +1034,7 @@
 						const url = URL.createObjectURL(blob);
 						const link = document.createElement('a');
 						link.href = url;
-						link.download = `report_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`;
+						link.download = `report_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.xlsx`;
 						document.body.appendChild(link);
 						link.click();
 						link.remove();

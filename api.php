@@ -429,14 +429,7 @@ try {
 				$header[] = $label . ' выручка';
 			}
 
-			$filename = 'report_' . date('Y-m-d_H-i-s') . '.csv';
-			header('Content-Type: text/csv; charset=utf-8');
-			header('Content-Disposition: attachment; filename="' . $filename . '"');
-			header('Cache-Control: no-store');
-
-			$out = fopen('php://output', 'w');
-			fwrite($out, "\xEF\xBB\xBF");
-			fwrite($out, implode(';', array_map('csvExportCell', $header)) . "\r\n");
+			$rows = [$header];
 
 			if (!empty($unitIds)) {
 				$unitPlaceholders = implode(',', array_fill(0, count($unitIds), '?'));
@@ -505,12 +498,11 @@ try {
 							$row[] = '';
 						}
 					}
-
-					fwrite($out, implode(';', array_map('csvExportCell', $row)) . "\r\n");
+					$rows[] = $row;
 				}
 			}
 
-			fclose($out);
+			streamXlsxDownload($rows, 'report_' . date('Y-m-d_H-i-s') . '.xlsx');
 			exit;
 
 		default:
