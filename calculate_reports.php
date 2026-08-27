@@ -2,7 +2,6 @@
 require_once(__DIR__ . '/config.php');
 
 $pdo = getDbConnection();
-$currentYear = date('Y');
 
 echo "=== Расчет месячных отчетов ===\n";
 
@@ -37,8 +36,6 @@ $insertStmt = $pdo->prepare("
         calculated_at = CURRENT_TIMESTAMP
 ");
 
-$processedUnits = [];
-
 $processed = 0;
 $processedContracts = [];
 $skippedNoType = 0;
@@ -53,91 +50,32 @@ foreach ($contracts as $contract) {
             $skippedNoType++;
             continue;
         }
-        
+
         $contractKey = $contract['unit_id'] . '|' . $contract['start_date'] . '|' . $contract['end_date'];
-        
         if (isset($processedContracts[$contractKey])) {
             $skippedDuplicates++;
             continue;
         }
-        
-        $startDate = new DateTime($contract['start_date']);
-        $endDate = new DateTime($contract['end_date']);
-        $monthlyPrice = floatval($contract['opportunity']);
-        
-        $totalDays = $startDate->diff($endDate)->days + 1;
-        if ($totalDays <= 0) {
+
+        $months = buildContractMonthlyBreakdown($contract, $contractType);
+        if (empty($months)) {
             $skippedInvalidDays++;
             continue;
         }
-        
-        $currentMonth = clone $startDate;
-        $currentMonth->modify('first day of this month');
-        $isFirstMonth = true;
-        
-        while ($currentMonth <= $endDate) {
-            if ($contractType === 'долгосрок' && $totalDays >= 30 && $totalDays < 60 && !$isFirstMonth) {
-                $isFirstMonth = false;
-                $currentMonth->modify('+1 month');
-                continue;
-            }
-            
-            $monthKey = $currentMonth->format('Y-m');
-            $year = (int)$currentMonth->format('Y');
-            $monthNum = (int)$currentMonth->format('m');
-            
-            $monthStart = new DateTime($currentMonth->format('Y-m-01'));
-            $monthEnd = clone $monthStart;
-            $monthEnd->modify('last day of this month');
-            $monthEnd->setTime(23, 59, 59);
-            
-            $periodStart = $startDate > $monthStart ? $startDate : $monthStart;
-            $periodEnd = $endDate < $monthEnd ? $endDate : $monthEnd;
-            
-            if ($periodStart <= $periodEnd) {
-                $daysInMonth = $periodStart->diff($periodEnd)->days + 1;
-                $daysInCalendarMonth = (int)$monthEnd->format('j');
-                
-                if ($daysInMonth > 0) {
-                    if ($contractType === 'долгосрок' && $totalDays >= 30 && $daysInMonth < $daysInCalendarMonth && !$isFirstMonth) {
-                        $isFirstMonth = false;
-                        $currentMonth->modify('+1 month');
-                        continue;
-                    }
-                    
-                    if ($contractType === 'долгосрок') {
-                        if ($totalDays >= 30 && $totalDays < 60 && $isFirstMonth) {
-                            $revenue = $monthlyPrice;
-                        } elseif ($totalDays >= 30) {
-                            $revenue = $monthlyPrice;
-                        } else {
-                            $pricePerDay = $monthlyPrice / $daysInCalendarMonth;
-                            $revenue = $pricePerDay * $daysInMonth;
-                        }
-                    } else {
-                        $pricePerDay = $monthlyPrice / $totalDays;
-                        $revenue = $pricePerDay * $daysInMonth;
-                    }
-                    
-                    $avgPrice = $revenue / $daysInMonth;
-                    
-                    $insertStmt->execute([
-                        $contract['unit_id'],
-                        $contractType,
-                        $monthKey,
-                        $year,
-                        $monthNum,
-                        $daysInMonth,
-                        $revenue,
-                        $avgPrice
-                    ]);
-                }
-            }
-            
-            $isFirstMonth = false;
-            $currentMonth->modify('+1 month');
+
+        foreach ($months as $monthKey => $monthData) {
+            $insertStmt->execute([
+                $contract['unit_id'],
+                $contractType,
+                $monthKey,
+                $monthData['year'],
+                $monthData['month_num'],
+                $monthData['days'],
+                $monthData['revenue'],
+                $monthData['avg'],
+            ]);
         }
-        
+
         $processedContracts[$contractKey] = true;
         $processed++;
         if ($processed % 100 == 0) {
@@ -169,4 +107,3 @@ echo "  - Ошибки обработки: $skippedErrors\n";
 $totalSkipped = $skippedNoType + $skippedDuplicates + $skippedInvalidDays + $skippedErrors;
 echo "Всего пропущено: $totalSkipped\n";
 echo "Создано записей в monthly_reports: $reportsCount\n";
-

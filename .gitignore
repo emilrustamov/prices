@@ -3,3 +3,4 @@ logs/
 .cursorignore
 .cursor/
 config.php
+cache/

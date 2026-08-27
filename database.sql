@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS contracts (
     planned_end_date DATETIME,
     unit_id VARCHAR(100),
     stage_id VARCHAR(100),
+    contract_type_id INT NULL,
     opportunity DECIMAL(15,2),
     currency_id VARCHAR(10),
     is_valid TINYINT(1) DEFAULT 1,
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS units (
 CREATE TABLE IF NOT EXISTS monthly_reports (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     unit_id VARCHAR(100) NOT NULL,
+    contract_type VARCHAR(50) NOT NULL,
     month_key VARCHAR(7) NOT NULL,
     year INT NOT NULL,
     month_num INT NOT NULL,
@@ -45,8 +47,7 @@ CREATE TABLE IF NOT EXISTS monthly_reports (
     total_revenue DECIMAL(15,2) DEFAULT 0.00,
     avg_price_per_day DECIMAL(15,2) DEFAULT 0.00,
     calculated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY unique_unit_month (unit_id, month_key),
+    UNIQUE KEY unique_unit_month_type (unit_id, month_key, contract_type),
     KEY idx_month (year, month_num),
     KEY idx_unit (unit_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
