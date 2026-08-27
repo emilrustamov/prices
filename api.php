@@ -35,6 +35,10 @@ try {
 			echo json_encode(['success' => true, 'data' => $stmt->fetchAll(PDO::FETCH_COLUMN)]);
 			break;
 
+		case 'apartment_types':
+			echo json_encode(['success' => true, 'data' => getApartmentTypeOptions()], JSON_UNESCAPED_UNICODE);
+			break;
+
 		case 'units':
 			$years = parseCsvInts($_GET['years'] ?? null);
 			if (empty($years)) {
@@ -43,10 +47,11 @@ try {
 			$months = parseCsvInts($_GET['months'] ?? null);
 			$districts = parseCsvStrings($_GET['districts'] ?? null);
 			$buildings = parseCsvStrings($_GET['buildings'] ?? null);
+			$apartmentTypes = parseCsvStrings($_GET['apartment_types'] ?? null);
 
 			$yearPlaceholders = implode(',', array_fill(0, count($years), '?'));
 			$query = "
-				SELECT u.bitrix_id, u.name, u.district, u.building, COUNT(mr.id) as reports_count
+				SELECT u.bitrix_id, u.name, u.district, u.building, u.apartment_type, COUNT(mr.id) as reports_count
 				FROM units u
 				INNER JOIN monthly_reports mr ON u.bitrix_id = mr.unit_id AND mr.year IN ($yearPlaceholders)
 			";
@@ -60,7 +65,8 @@ try {
 
 			appendUnitStringFilter($query, $params, 'district', $districts);
 			appendUnitStringFilter($query, $params, 'building', $buildings);
-			$query .= " GROUP BY u.bitrix_id, u.name, u.district, u.building HAVING reports_count > 0 ORDER BY u.bitrix_id";
+			appendUnitStringFilter($query, $params, 'apartment_type', $apartmentTypes);
+			$query .= " GROUP BY u.bitrix_id, u.name, u.district, u.building, u.apartment_type HAVING reports_count > 0 ORDER BY u.bitrix_id";
 
 			$stmt = $pdo->prepare($query);
 			$stmt->execute($params);
@@ -149,6 +155,7 @@ try {
 			$months = parseCsvInts($input['months'] ?? null);
 			$districts = parseCsvStrings($input['districts'] ?? null);
 			$buildings = parseCsvStrings($input['buildings'] ?? null);
+			$apartmentTypes = parseCsvStrings($input['apartment_types'] ?? null);
 			$contractType = !empty($input['contract_type']) ? $input['contract_type'] : null;
 			$contractTypeIds = parseCsvInts($input['contract_type_ids'] ?? null);
 			$units = parseCsvStrings($input['units'] ?? null);
@@ -156,7 +163,7 @@ try {
 			$limit = max(1, min(50, (int)($input['limit'] ?? 20)));
 
 			$cacheKey = md5(json_encode([
-				$years, $months, $districts, $buildings, $contractType, $contractTypeIds, $units, $offset, $limit
+				$years, $months, $districts, $buildings, $apartmentTypes, $contractType, $contractTypeIds, $units, $offset, $limit
 			], JSON_UNESCAPED_UNICODE));
 			$cached = readReportCache($cacheKey);
 			if ($cached !== null) {
@@ -167,7 +174,7 @@ try {
 
 			$yearPlaceholders = implode(',', array_fill(0, count($years), '?'));
 			$unitsQuery = "
-				SELECT DISTINCT u.bitrix_id, u.name, u.district, u.building
+				SELECT DISTINCT u.bitrix_id, u.name, u.district, u.building, u.apartment_type
 				FROM units u
 				INNER JOIN monthly_reports mr ON u.bitrix_id = mr.unit_id
 				WHERE mr.year IN ($yearPlaceholders)
@@ -182,6 +189,7 @@ try {
 
 			appendUnitStringFilter($unitsQuery, $unitsParams, 'district', $districts);
 			appendUnitStringFilter($unitsQuery, $unitsParams, 'building', $buildings);
+			appendUnitStringFilter($unitsQuery, $unitsParams, 'apartment_type', $apartmentTypes);
 
 			if ($contractType !== null) {
 				$unitsQuery .= " AND mr.contract_type = ?";
@@ -349,13 +357,14 @@ try {
 			$months = parseCsvInts($input['months'] ?? null);
 			$districts = parseCsvStrings($input['districts'] ?? null);
 			$buildings = parseCsvStrings($input['buildings'] ?? null);
+			$apartmentTypes = parseCsvStrings($input['apartment_types'] ?? null);
 			$contractType = !empty($input['contract_type']) ? $input['contract_type'] : null;
 			$contractTypeIds = parseCsvInts($input['contract_type_ids'] ?? null);
 			$units = parseCsvStrings($input['units'] ?? null);
 
 			$yearPlaceholders = implode(',', array_fill(0, count($years), '?'));
 			$unitsQuery = "
-				SELECT DISTINCT u.bitrix_id
+				SELECT DISTINCT u.bitrix_id, u.name
 				FROM units u
 				INNER JOIN monthly_reports mr ON u.bitrix_id = mr.unit_id
 				WHERE mr.year IN ($yearPlaceholders)
@@ -370,6 +379,7 @@ try {
 
 			appendUnitStringFilter($unitsQuery, $unitsParams, 'district', $districts);
 			appendUnitStringFilter($unitsQuery, $unitsParams, 'building', $buildings);
+			appendUnitStringFilter($unitsQuery, $unitsParams, 'apartment_type', $apartmentTypes);
 
 			if ($contractType !== null) {
 				$unitsQuery .= " AND mr.contract_type = ?";
@@ -409,7 +419,13 @@ try {
 			$unitsQuery .= " ORDER BY u.bitrix_id";
 			$stmt = $pdo->prepare($unitsQuery);
 			$stmt->execute($unitsParams);
-			$unitIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+			$unitsRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+			$unitIds = [];
+			$unitNames = [];
+			foreach ($unitsRows as $unitRow) {
+				$unitIds[] = $unitRow['bitrix_id'];
+				$unitNames[$unitRow['bitrix_id']] = $unitRow['name'] ?? '';
+			}
 
 			$monthKeys = buildReportMonthKeys($years, $months);
 			$monthLabels = [
@@ -419,7 +435,7 @@ try {
 			];
 			$showYear = count($years) > 1;
 
-			$header = ['Unit ID', 'Contract ID', 'Тип', 'Подтип'];
+			$header = ['Unit', 'Unit ID', 'Contract ID', 'Contract', 'Тип', 'Подтип'];
 			foreach ($monthKeys as $monthKey) {
 				[$y, $m] = array_map('intval', explode('-', $monthKey));
 				$label = $showYear
@@ -484,8 +500,10 @@ try {
 					}
 
 					$row = [
+						$unitNames[$contract['unit_id']] ?? '',
 						$contract['unit_id'],
 						$contract['bitrix_id'],
+						$contract['title'] ?? '',
 						$typeName,
 						getContractTypeIdLabel($contract['contract_type_id']),
 					];

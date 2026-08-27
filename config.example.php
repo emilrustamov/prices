@@ -13,6 +13,7 @@ define('APARTMENT_ENTITY_TYPE_ID', 144);
 define('UNIT_APARTMENT_FIELD', 'ufCrm8_1684429208');
 define('APARTMENT_DISTRICT_FIELD', 'ufCrm6District');
 define('APARTMENT_BUILDING_FIELD', 'ufCrm6_1682232363193');
+define('APARTMENT_TYPE_FIELD', 'ufCrm6_1682232863625');
 define('REPORT_CACHE_TTL', 300);
 define('CONTRACT_ENTITY_TYPE_ID', 183);
 
@@ -69,6 +70,67 @@ function getContractTypeIdLabel($typeId) {
     ];
     $typeIdInt = (int)$typeId;
     return $labels[$typeIdInt] ?? (string)$typeId;
+}
+
+/**
+ * @param mixed $value
+ * @return string|null
+ */
+function getApartmentTypeLabel($value) {
+    static $labels = [
+        52 => 'Studio',
+        54 => '1br',
+        10662 => "1br + maid's",
+        10664 => '1br + study',
+        56 => '2br',
+        10666 => "2br + maid's",
+        10668 => '2br + study',
+        58 => '3br',
+        10670 => "3br + maid's",
+        10672 => '3br + study',
+        60 => '4br',
+        62 => '5br',
+        64 => '6br+',
+    ];
+    if ($value === null || $value === '') {
+        return null;
+    }
+    if (is_array($value)) {
+        $value = reset($value);
+        if ($value === false || $value === null || $value === '') {
+            return null;
+        }
+    }
+    $asString = trim((string)$value);
+    if (in_array($asString, $labels, true)) {
+        return $asString;
+    }
+    $typeIdInt = (int)$asString;
+    if (isset($labels[$typeIdInt])) {
+        return $labels[$typeIdInt];
+    }
+    return normalizeBitrixString($asString);
+}
+
+/**
+ * @return string[]
+ */
+function getApartmentTypeOptions() {
+    return [
+        'Studio',
+        '1br',
+        "1br + maid's",
+        '1br + study',
+        '2br',
+        "2br + maid's",
+        '2br + study',
+        '3br',
+        "3br + maid's",
+        '3br + study',
+        '4br',
+        '5br',
+        '6br+',
+    ];
 }
 
 /**

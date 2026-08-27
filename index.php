@@ -68,6 +68,19 @@
 			background: #fef3c7 !important;
 		}
 		.flex-wrap { flex-wrap: wrap; }
+		.btn-excel {
+			background: #16a34a;
+			color: #fff;
+			font-weight: 700;
+			padding: 0.5rem 1rem;
+			border-radius: 0.25rem;
+			box-shadow: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -4px rgba(0,0,0,.1);
+			font-size: 0.75rem;
+			border: 0;
+			cursor: pointer;
+		}
+		.btn-excel:hover { background: #15803d; }
+		.btn-excel:disabled { opacity: .5; cursor: not-allowed; }
 	</style>
 </head>
 <body class="bg-gray-50 p-2" id="app" style="font-size: 11px; overflow-y: hidden;">
@@ -92,7 +105,7 @@
 			<button
 				@click="exportExcel"
 				:disabled="exporting || loading"
-				class="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold py-2 px-4 rounded shadow-lg text-xs"
+				class="btn-excel"
 			>
 				{{ exporting ? 'Выгрузка...' : 'Excel' }}
 			</button>
@@ -103,6 +116,7 @@
 			<span v-if="appliedMonths.length > 0" class="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">Месяцы: {{ selectedMonthsLabels }}</span>
 			<span v-if="appliedDistricts.length > 0" class="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">District: {{ appliedDistricts.length }}</span>
 			<span v-if="appliedBuildings.length > 0" class="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">Building: {{ appliedBuildings.length }}</span>
+			<span v-if="appliedApartmentTypes.length > 0" class="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">Type: {{ appliedApartmentTypesLabel }}</span>
 			<span v-if="appliedContractType" class="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">Тип: {{ appliedContractType === 'краткосрок' ? 'Краткосрок' : 'Долгосрок' }}</span>
 			<span v-if="appliedContractTypeIds.length > 0" class="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs" :title="appliedContractTypeIdsLabel">Подтипы: {{ appliedContractTypeIdsLabel }}</span>
 			<span v-if="selectedUnits.length > 0" class="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">Юнитов: {{ selectedUnits.length }}</span>
@@ -216,6 +230,35 @@
 									class="rounded border-gray-300 text-blue-600 mr-2"
 								>
 								<span class="text-xs text-gray-900">{{ typeId.name }}</span>
+							</label>
+						</div>
+					</div>
+
+					<div class="relative">
+						<label class="block text-xs font-medium text-gray-700 mb-1">Type (пусто = все):</label>
+						<button
+							type="button"
+							@click.stop="toggleFilterDropdown('apartmentTypes')"
+							class="w-full border border-gray-300 rounded-md px-2 py-1 bg-white cursor-pointer hover:border-blue-400 flex items-center justify-between text-left"
+						>
+							<span class="text-xs text-gray-700 truncate">{{ apartmentTypesDropdownLabel }}</span>
+							<svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+							</svg>
+						</button>
+						<div v-if="openFilterDropdown === 'apartmentTypes'" class="absolute z-20 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-56 overflow-y-auto" @click.stop>
+							<label
+								v-for="typeName in apartmentTypeOptions"
+								:key="typeName"
+								class="flex items-center px-2 py-1.5 hover:bg-blue-50 cursor-pointer border-b border-gray-100"
+							>
+								<input
+									type="checkbox"
+									:value="typeName"
+									v-model="selectedApartmentTypes"
+									class="rounded border-gray-300 text-blue-600 mr-2"
+								>
+								<span class="text-xs text-gray-900">{{ typeName }}</span>
 							</label>
 						</div>
 					</div>
@@ -564,10 +607,12 @@
 					selectedMonths: [],
 					selectedDistricts: [],
 					selectedBuildings: [],
+					selectedApartmentTypes: [],
 					appliedYears: [CURRENT_YEAR],
 					appliedMonths: [],
 					appliedDistricts: [],
 					appliedBuildings: [],
+					appliedApartmentTypes: [],
 					selectedContractType: '',
 					selectedContractTypeIds: [],
 					appliedContractType: '',
@@ -583,6 +628,21 @@
 					loadingMore: false,
 					horizontalScrollTimer: null,
 					contractsModalData: [],
+					apartmentTypeOptions: [
+						'Studio',
+						'1br',
+						"1br + maid's",
+						'1br + study',
+						'2br',
+						"2br + maid's",
+						'2br + study',
+						'3br',
+						"3br + maid's",
+						'3br + study',
+						'4br',
+						'5br',
+						'6br+'
+					],
 					contractTypeIds: {
 						'краткосрок': [
 							{ id: 882, name: 'Airbnb' },
@@ -649,6 +709,24 @@
 						.map(num => this.monthNames[num])
 						.join(', ');
 				},
+				apartmentTypesDropdownLabel() {
+					if (this.selectedApartmentTypes.length === 0) {
+						return 'Все Type';
+					}
+					if (this.selectedApartmentTypes.length <= 2) {
+						return this.selectedApartmentTypes.join(', ');
+					}
+					return `Выбрано: ${this.selectedApartmentTypes.length}`;
+				},
+				appliedApartmentTypesLabel() {
+					if (this.appliedApartmentTypes.length === 0) {
+						return '';
+					}
+					if (this.appliedApartmentTypes.length <= 2) {
+						return this.appliedApartmentTypes.join(', ');
+					}
+					return String(this.appliedApartmentTypes.length);
+				},
 				availableContractTypeOptions() {
 					if (this.selectedContractType) {
 						return this.contractTypeIds[this.selectedContractType] || [];
@@ -696,6 +774,7 @@
 					if (this.appliedMonths.length > 0) count++;
 					if (this.appliedDistricts.length > 0) count++;
 					if (this.appliedBuildings.length > 0) count++;
+					if (this.appliedApartmentTypes.length > 0) count++;
 					if (this.appliedContractType) count++;
 					if (this.appliedContractTypeIds.length > 0) count++;
 					if (this.selectedUnits.length > 0 && this.selectedUnits.length !== this.availableUnits.length) count++;
@@ -787,6 +866,7 @@
 						months: this.appliedMonths.map(Number),
 						districts: this.appliedDistricts,
 						buildings: this.appliedBuildings,
+						apartment_types: this.appliedApartmentTypes,
 						offset,
 						limit: PAGE_SIZE
 					};
@@ -844,6 +924,7 @@
 						months: this.appliedMonths.map(Number),
 						districts: [...this.appliedDistricts],
 						buildings: [...this.appliedBuildings],
+						apartmentTypes: [...this.appliedApartmentTypes],
 						contractType: this.appliedContractType,
 						contractTypeIds: [...this.appliedContractTypeIds],
 						units: [...this.selectedUnits]
@@ -857,6 +938,7 @@
 					if (state.months.length) params.set('months', state.months.join(','));
 					if (state.districts.length) params.set('districts', state.districts.join(','));
 					if (state.buildings.length) params.set('buildings', state.buildings.join(','));
+					if ((state.apartmentTypes || []).length) params.set('apartment_types', state.apartmentTypes.join(','));
 					if (state.contractType) params.set('contract_type', state.contractType);
 					if (state.contractTypeIds.length) params.set('contract_type_ids', state.contractTypeIds.join(','));
 					const allSelected = state.units.length > 0 && state.units.length === this.availableUnits.length;
@@ -872,6 +954,7 @@
 					this.selectedMonths = (source.months || []).map(Number);
 					this.selectedDistricts = source.districts || [];
 					this.selectedBuildings = source.buildings || [];
+					this.selectedApartmentTypes = source.apartmentTypes || [];
 					this.selectedContractType = source.contractType || '';
 					this.selectedContractTypeIds = (source.contractTypeIds || []).map(Number);
 					this.selectedUnits = source.units || [];
@@ -879,6 +962,7 @@
 					this.appliedMonths = [...this.selectedMonths];
 					this.appliedDistricts = [...this.selectedDistricts];
 					this.appliedBuildings = [...this.selectedBuildings];
+					this.appliedApartmentTypes = [...this.selectedApartmentTypes];
 					this.appliedContractType = this.selectedContractType;
 					this.appliedContractTypeIds = [...this.selectedContractTypeIds];
 				},
@@ -890,6 +974,7 @@
 							months: url.get('months') ? url.get('months').split(',').map(Number).filter(Boolean) : [],
 							districts: url.get('districts') ? url.get('districts').split(',').map(s => s.trim()).filter(Boolean) : [],
 							buildings: url.get('buildings') ? url.get('buildings').split(',').map(s => s.trim()).filter(Boolean) : [],
+							apartmentTypes: url.get('apartment_types') ? url.get('apartment_types').split(',').map(s => s.trim()).filter(Boolean) : [],
 							contractType: url.get('contract_type') || '',
 							contractTypeIds: url.get('contract_type_ids') ? url.get('contract_type_ids').split(',').map(Number).filter(Boolean) : [],
 							units: url.get('units') ? url.get('units').split(',').filter(Boolean) : []
@@ -930,7 +1015,7 @@
 					}
 					this.buildings = result.data;
 				},
-				buildFilterParams(action, years, months, districts, buildings) {
+				buildFilterParams(action, years, months, districts, buildings, apartmentTypes = []) {
 					const params = new URLSearchParams({
 						action,
 						years: years.join(',')
@@ -943,6 +1028,9 @@
 					}
 					if (buildings.length > 0) {
 						params.append('buildings', buildings.join(','));
+					}
+					if (apartmentTypes.length > 0) {
+						params.append('apartment_types', apartmentTypes.join(','));
 					}
 					return params;
 				},
@@ -971,7 +1059,8 @@
 							years,
 							months,
 							this.selectedDistricts,
-							this.selectedBuildings
+							this.selectedBuildings,
+							this.selectedApartmentTypes
 						));
 						if (!result.success) {
 							throw new Error(result.error);
@@ -1102,10 +1191,12 @@
 					this.selectedMonths = [];
 					this.selectedDistricts = [];
 					this.selectedBuildings = [];
+					this.selectedApartmentTypes = [];
 					this.appliedYears = [CURRENT_YEAR];
 					this.appliedMonths = [];
 					this.appliedDistricts = [];
 					this.appliedBuildings = [];
+					this.appliedApartmentTypes = [];
 					this.selectedContractType = '';
 					this.selectedContractTypeIds = [];
 					this.appliedContractType = '';
@@ -1129,6 +1220,7 @@
 					this.appliedMonths = [...this.selectedMonths];
 					this.appliedDistricts = [...this.selectedDistricts];
 					this.appliedBuildings = [...this.selectedBuildings];
+					this.appliedApartmentTypes = [...this.selectedApartmentTypes];
 					this.appliedContractType = this.selectedContractType;
 					this.appliedContractTypeIds = [...this.selectedContractTypeIds];
 					this.showUnitsModal = false;

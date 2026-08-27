@@ -30,10 +30,12 @@ CREATE TABLE IF NOT EXISTS units (
     apartment_id VARCHAR(100) NULL,
     district VARCHAR(255) NULL,
     building VARCHAR(255) NULL,
+    apartment_type VARCHAR(255) NULL,
     synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY unique_bitrix_id (bitrix_id),
     KEY idx_district (district),
-    KEY idx_building (building)
+    KEY idx_building (building),
+    KEY idx_apartment_type (apartment_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS monthly_reports (

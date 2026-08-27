@@ -4,7 +4,7 @@ require_once __DIR__ . '/config.php';
 
 $pdo = getDbConnection();
 
-echo "Синхронизация юнитов (Apartment → District/Building)...\n";
+echo "Синхронизация юнитов (Apartment → District/Building/Type)...\n";
 
 $unitIds = $pdo->query("
     SELECT DISTINCT unit_id
@@ -14,19 +14,21 @@ $unitIds = $pdo->query("
 ")->fetchAll(PDO::FETCH_COLUMN);
 
 $unitInsertStmt = $pdo->prepare("
-    INSERT INTO units (bitrix_id, name, apartment_id, district, building, synced_at)
-    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    INSERT INTO units (bitrix_id, name, apartment_id, district, building, apartment_type, synced_at)
+    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON DUPLICATE KEY UPDATE
         name = VALUES(name),
         apartment_id = VALUES(apartment_id),
         district = VALUES(district),
         building = VALUES(building),
+        apartment_type = VALUES(apartment_type),
         synced_at = CURRENT_TIMESTAMP
 ");
 
 $unitsSynced = 0;
 $withDistrict = 0;
 $withBuilding = 0;
+$withType = 0;
 $apartmentCache = [];
 
 foreach (array_chunk($unitIds, 50) as $chunk) {
@@ -56,7 +58,7 @@ foreach (array_chunk($unitIds, 50) as $chunk) {
         $apartmentResult = CRest::call('crm.item.list', [
             'entityTypeId' => APARTMENT_ENTITY_TYPE_ID,
             'filter' => ['@id' => array_map('intval', $apartmentChunk)],
-            'select' => ['id', APARTMENT_DISTRICT_FIELD, APARTMENT_BUILDING_FIELD],
+            'select' => ['id', APARTMENT_DISTRICT_FIELD, APARTMENT_BUILDING_FIELD, APARTMENT_TYPE_FIELD],
             'start' => 0
         ]);
 
@@ -69,6 +71,7 @@ foreach (array_chunk($unitIds, 50) as $chunk) {
             $apartmentCache[(string)$apartment['id']] = [
                 'district' => normalizeDistrictName($apartment[APARTMENT_DISTRICT_FIELD] ?? null),
                 'building' => normalizeBitrixString($apartment[APARTMENT_BUILDING_FIELD] ?? null),
+                'apartment_type' => getApartmentTypeLabel($apartment[APARTMENT_TYPE_FIELD] ?? null),
             ];
         }
     }
@@ -79,22 +82,28 @@ foreach (array_chunk($unitIds, 50) as $chunk) {
         $apartmentId = $item ? normalizeBitrixId($item[UNIT_APARTMENT_FIELD] ?? null) : null;
         $district = null;
         $building = null;
+        $apartmentType = null;
         if ($apartmentId !== null && isset($apartmentCache[$apartmentId])) {
             $district = $apartmentCache[$apartmentId]['district'];
             $building = $apartmentCache[$apartmentId]['building'];
+            $apartmentType = $apartmentCache[$apartmentId]['apartment_type'];
         }
         $unitInsertStmt->execute([
             $unitKey,
             $item['title'] ?? $unitKey,
             $apartmentId,
             $district,
-            $building
+            $building,
+            $apartmentType
         ]);
         if ($district !== null) {
             $withDistrict++;
         }
         if ($building !== null) {
             $withBuilding++;
+        }
+        if ($apartmentType !== null) {
+            $withType++;
         }
         $unitsSynced++;
     }
@@ -105,3 +114,4 @@ foreach (array_chunk($unitIds, 50) as $chunk) {
 echo "units: $unitsSynced\n";
 echo "with district: $withDistrict\n";
 echo "with building: $withBuilding\n";
+echo "with type: $withType\n";
